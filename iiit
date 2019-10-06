@@ -1,0 +1,277 @@
+#!/bin/bash
+
+## A script for connecting to IIIT Hyderabad vpn with openvpn
+
+
+GOT_C=false
+GOT_D=false
+GOT_G=false
+GOT_K=false
+GOT_T=false
+GOT_CHECK=false
+GOT_S=false
+
+
+sntp() {
+	if $GOT_K
+	then
+		kdeconnect-cli --name asus --ping-msg "$1"
+	fi
+}
+
+speak() {
+	if ! $GOT_S; then
+		espeak -s 150 -v en+f2 "$1" &
+	fi
+}
+
+check () {
+	local temp
+	temp=$(cat ~/bash/open)
+
+	if [ $temp -eq "-1" ]
+	then
+		echo "IIIT not connected"
+		sntp "IIIT not connected"
+			# espeak -s 150 -v en+f2 'triple i t not connected' &
+	else 
+		echo "IIIT connected"
+		sntp "IIIT connected"
+		#	espeak -s 150 -v en+f2 'triple i t connected'
+	fi
+	return 0
+}
+
+
+disconnect () {
+	local temp
+	temp=$(cat /home/sriteja/bash/open)
+
+	if [ $temp -eq -1 ]
+	then
+		echo "IIIT is not connected"
+		sntp "IIIT is not connected"
+		return 1
+	else
+		kill $temp
+		sleep 1
+		echo Sriteja@27 | sudo -S chmod a+rw /home/sriteja/bash/.log &> /dev/null
+		local s
+		s=$(cat /home/sriteja/bash/.log | tail -n 1)
+
+		if [ "$s" == "Exiting due to fatal error" ]
+		then
+			echo -n "-1" > /home/sriteja/bash/open 
+			notify-send --urgency=critical -t 1000 -i /home/sriteja/openvpn/openvpnhero.jpg "Successfully IIIT disconnected"
+			echo "Successfully disconnected"
+			speak 'triple i t network  disconnected'
+			sntp "Successfully IIIT disconnected"
+			return 0
+
+		else
+
+			notify-send -t 1000 -i /home/sriteja/openvpn/openvpnhero.jpg "IIIT disconnecting failed"
+			echo "not exited properly, see /home/sriteja/bash/.log file for more information"
+			speak 'triple i t disconnecting failed'
+			sntp "IIIT disconnecting failed"
+			return 2
+		fi
+	fi
+}
+
+connect () {
+	local temp="$(check)"
+	local net_connected="$(nmcli networking connectivity check)"
+	if [ $net_connected == "none" ]
+	then
+		notify-send --urgency=critical -t 1000 -i /home/sriteja/openvpn/openvpnhero.jpg "Please connect to wifi or ethernet cable"
+		echo "You are not connected to any wifi or ethernet cable"
+		speak 'Please connect to wifi or ethernet cable'
+		sntp "Please connect laptop to wifi or ethernet cable"
+		return 1
+	elif [ $net_connected == "full" ]
+	then
+		if [ "$temp" == "IIIT not connected" ]
+		then
+			echo Sriteja@27 | sudo -S bash -c 'openvpn --suppress-timestamps --writepid /home/sriteja/bash/open --config /root/openvpn/ubuntu.ovpn --user sriteja --group sriteja --log /home/sriteja/bash/.log &' &> /dev/null
+			tput civis
+			echo -n "trying to connect"
+			sudo chmod a+rw /home/sriteja/bash/.log
+			local i
+			i=${ttw:-20};
+			local slpval=1
+			local s
+			while (( $i > 0  ))
+			do
+				s=$(cat /home/sriteja/bash/.log | tail -n 1)
+				sleep 0.5
+				echo -n '.'
+				sleep 0.5
+				echo -n '.'
+				if [ "$s" == "Initialization Sequence Completed" ]
+				then
+					notify-send --urgency=critical -t 1000 -i /home/sriteja/openvpn/openvpnhero.jpg "IIIT connection established"
+					echo "successfully connected"
+					speak 'triple i t connection established'
+					tput cnorm
+					sntp "IIIT connection established"
+					return 0
+					break
+				else
+					if [ $i -eq 1 ]
+					then
+						tput cnorm	
+						notify-send --urgency=critical -t 1000 -i /home/sriteja/openvpn/openvpnhero.jpg "IIIT connection failed"
+						echo "not connected properly see /home/sriteja/bash/.log file for more details"
+						speak 'triple i t connection failed'
+						sudo kill $(cat /home/sriteja/bash/open)
+						echo "-1" > /home/sriteja/bash/open
+						sntp "IIIT connection failed"
+						return 2
+					fi
+				fi
+
+				i=$(( i-1 ))
+				slpval=1
+			done
+		elif [ "$temp" == "IIIT connected" ]
+		then
+			notify-send --urgency=critical -t 1000 -i /home/sriteja/openvpn/openvpnhero.jpg "resolve it for connection"
+			echo "laptop is already on IIIT network"
+			echo "but still if you are not getting IIIT websites then type 'resolve it'(without quotes)' else press any key to exit"
+			speak 'resolve it to connect to triple i t'
+			sntp "resolve it to connect to IIIT" 
+			local f
+			read f
+			if [ "$f" == 'resolve it' ] 
+			then
+				echo -n "first trying to disconnect from the previous connected IIIT network....    "
+				disconnect
+				# echo -n "now trying again to connect to IIIT network...    "	
+				connect
+			fi
+		fi
+	fi
+}
+
+if [ $# -eq 0 ]
+then
+        echo "Usage: IIIT {-c|-d|-g|--connect|--disconnect|--check}"
+        exit 0
+fi
+
+while :; do
+	if [ -z "$1" ]
+	then
+		break
+	fi
+	case $1 in
+	    --connect | -c)
+			GOT_C=true
+	        ;;
+		--disconnect | -d)
+	     	GOT_D=true
+	        ;;
+		--check | -r)
+	        GOT_CHECK=true
+	        ;;
+	    -g | --graphical)
+	        GOT_G=true
+	        ;;
+	    -k)
+			GOT_K=true
+			;;
+		-s)
+			GOT_S=true
+			;;
+		-t)
+			GOT_T=true
+			is_int=$(echo "$2 > 0" | bc)
+			if [ $is_int -eq 1 ]
+			then
+				ttw=$2
+				shift
+			else
+				echo "-t parameter requires argument i.e a number greater than 0"
+				exit 1
+			fi
+			;;
+
+		*)
+	       echo "$1: Invalid argument"
+	       exit 2
+	       ;;
+	esac
+	shift
+done
+
+if $GOT_G
+then
+	nautilus /home/sriteja/iiit/
+fi
+if $GOT_CHECK
+then
+	check
+fi
+
+if  $GOT_D && $GOT_C 
+then
+	
+	temp="$(check)"
+	if [ "$temp" == "IIIT not connected" ]
+	then
+		echo "There is no use of using -c and -d at a time when you are already not connected to IIIT network"
+		sntp "There is no use of using -c and -d at a time when you are already not connected to IIIT network"
+		exit 3
+	elif [ "$temp" == "IIIT connected" ]
+	then
+		disconnect
+		connect
+		exit 0
+	fi
+fi
+
+if $GOT_C
+then
+	connect
+	exit 0
+fi
+if $GOT_D
+then
+	disconnect
+	echo 0
+fi
+
+# while getopts ":cdg" opt
+# do
+# 	case $opt in
+# 		c)
+# 			if !$GOT_C
+# 			then
+# 				connect
+# 				GOT_C=true
+# 			fi
+# 			;;
+# 		d)
+# 			if !$GOT_D
+# 			then
+# 				disconnect
+# 				GOT_D=true
+# 			fi
+# 			;;
+# 		g)
+# 			if !GOT_G
+# 			then
+# 				nautilus /home/sriteja/IIIT/
+# 				GOT_G=true
+# 			fi
+# 			;;
+# 		\?)
+# 			echo "Invalid option: -$OPTARG"
+# 			exit 1
+# 			;;
+# 	esac
+# done
+
+
+
